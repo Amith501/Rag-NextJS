@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { LoadPdf } from "@/lib/pdf";
-import { SplitPages } from "@/lib/splitter";
-import { getVectorStore } from "@/lib/vector-store";
+
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -22,6 +20,9 @@ export async function POST(req: Request) {
 
   let step = "start";
   try {
+     const { LoadPdf } = await import("@/lib/pdf");
+    const { SplitPages } = await import("@/lib/splitter");
+    const { getVectorStore } = await import("@/lib/vector-store");
     const formData = await req.formData();
     const file = formData.get("file");
 
