@@ -6,17 +6,7 @@ const splitter = new RecursiveCharacterTextSplitter({
   chunkOverlap: 200,
 });
 
-// export const SplitDocument = async (
-//   text: string,
-//   metadata: Record<string, unknown> = {}
-// ) => {
-//   const documents = await splitter.createDocuments(
-//     [text],
-//     [metadata]
-//   );
 
-//   return documents;
-// };
 
 export async function SplitPages(
   pages:{num:number,text:string}[],
