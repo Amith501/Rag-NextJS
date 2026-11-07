@@ -1,20 +1,26 @@
-
-
-
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { LoadPdf } from "@/lib/pdf";
-import { SplitPages} from "@/lib/splitter";
+import { SplitPages } from "@/lib/splitter";
 import { getVectorStore } from "@/lib/vector-store";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
+  // Local development is open. A deployed site needs the secret key.
+  const allowed =
+    process.env.NODE_ENV !== "production" ||
+    (!!process.env.DEMO_KEY && req.headers.get("x-demo-key") === process.env.DEMO_KEY);
+
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Uploads are disabled in the public demo" },
+      { status: 403 }
+    );
+  }
+
   let step = "start";
-  const key = req.headers.get("x-demo-key");
-if (!process.env.DEMO_KEY || key !== process.env.DEMO_KEY) {
-  return NextResponse.json({ error: "Uploads are disabled in the public demo" }, { status: 403 });
-}
   try {
     const formData = await req.formData();
     const file = formData.get("file");
@@ -41,7 +47,6 @@ if (!process.env.DEMO_KEY || key !== process.env.DEMO_KEY) {
     const documents = await SplitPages(result.pages, {
       documentId,
       source: file.name,
-   
     });
 
     step = "vector-store";
@@ -66,4 +71,3 @@ if (!process.env.DEMO_KEY || key !== process.env.DEMO_KEY) {
     return NextResponse.json({ success: false, step, error: message }, { status: 500 });
   }
 }
-
