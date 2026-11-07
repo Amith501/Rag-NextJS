@@ -14,12 +14,28 @@ type UploadedDoc = {
   chunks: number;
 };
 
+// Fixed at build time. In demo mode uploads are hidden and the server
+// always searches the DEMO_DOCUMENT_ID document.
+const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+
 const STORAGE_KEY = "rag-docs";
 const SUGGESTIONS = [
   "Summarize this document",
   "What are the key points?",
   "List any important dates or numbers",
 ];
+const DEMO_SUGGESTIONS = [
+  "What does LangServe do?",
+  "What are the limitations of LangChain?",
+  "What is LangGraph used for?",
+];
+
+const DEMO_DOC: UploadedDoc = {
+  documentId: "demo",
+  filename: "langchain.pdf",
+  pages: 14,
+  chunks: 31,
+};
 
 function formatSize(bytes: number) {
   return bytes < 1024 * 1024
@@ -28,17 +44,15 @@ function formatSize(bytes: number) {
 }
 
 export default function Home() {
-  const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
-
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [dragging, setDragging] = useState(false);
 
-const [docs, setDocs] = useState<UploadedDoc[]>(
-  DEMO ? [{ documentId: "demo", filename: "langchain.pdf", pages: 14, chunks: 31 }] : []
-);
-const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
+  const [docs, setDocs] = useState<UploadedDoc[]>(DEMO ? [DEMO_DOC] : []);
+  const [activeId, setActiveId] = useState<string | null>(
+    DEMO ? DEMO_DOC.documentId : null
+  );
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [question, setQuestion] = useState("");
@@ -50,12 +64,14 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const activeDoc = docs.find((d) => d.documentId === activeId);
+  const suggestions = DEMO ? DEMO_SUGGESTIONS : SUGGESTIONS;
 
-  // Remember uploaded documents across page refreshes
+  // Remember uploaded documents across refreshes (full app only)
   useEffect(() => {
+    if (DEMO) return;
     try {
       const saved = JSON.parse(
-        localStorage.getItem(STORAGE_KEY) || "[]",
+        localStorage.getItem(STORAGE_KEY) || "[]"
       ) as UploadedDoc[];
       if (saved.length) {
         setDocs(saved);
@@ -67,6 +83,7 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
   }, []);
 
   useEffect(() => {
+    if (DEMO) return;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
     } catch {
@@ -81,10 +98,7 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
   function pickFile(f: File | undefined | null) {
     setUploadError("");
     if (!f) return;
-    if (
-      f.type !== "application/pdf" &&
-      !f.name.toLowerCase().endsWith(".pdf")
-    ) {
+    if (f.type !== "application/pdf" && !f.name.toLowerCase().endsWith(".pdf")) {
       setUploadError("Only PDF files are supported.");
       return;
     }
@@ -96,7 +110,7 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
   }
 
   async function upload() {
-    if (!file) return;
+    if (!file || DEMO) return;
     setUploading(true);
     setUploadError("");
     try {
@@ -108,7 +122,7 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
         throw new Error(
           data.step
             ? `${data.error} (failed at: ${data.step})`
-            : data.error || "Upload failed",
+            : data.error || "Upload failed"
         );
       }
       const doc: UploadedDoc = {
@@ -132,10 +146,13 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
   async function ask(text?: string) {
     const q = (text ?? question).trim();
     if (!q || asking) return;
+
+    // Last few turns, so follow-up questions can be rewritten on the server
     const history = messages
       .filter((m) => m.role === "user" || !m.error)
       .slice(-6)
       .map((m) => ({ role: m.role, text: m.text }));
+
     setMessages((m) => [...m, { role: "user", text: q }]);
     setQuestion("");
     if (textRef.current) textRef.current.style.height = "auto";
@@ -146,7 +163,8 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question: q,
-          documentId: activeId ?? undefined,history
+          documentId: activeId ?? undefined,
+          history,
         }),
       });
       const data = await res.json();
@@ -197,73 +215,92 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
           PDF Q&amp;A
         </h1>
         <p className="mt-1 text-sm text-[#52606D]">
-          Upload a PDF, then ask questions about what is inside it.
+          {DEMO
+            ? "Ask questions about a sample paper on LangChain."
+            : "Upload a PDF, then ask questions about what is inside it."}
         </p>
 
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragging(false);
-            pickFile(e.dataTransfer.files?.[0]);
-          }}
-          className={`mt-6 rounded-md border-2 border-dashed p-5 text-center transition-colors ${
-            dragging
-              ? "border-[#0F6B6B] bg-[#E3F2F2]"
-              : "border-[#9AA7B4] bg-white"
-          }`}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/pdf,.pdf"
-            className="peer sr-only"
-            id="pdf"
-            onChange={(e) => pickFile(e.target.files?.[0])}
-          />
-          <label
-            htmlFor="pdf"
-            className="cursor-pointer text-sm font-medium text-[#0F6B6B] underline underline-offset-2 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#0F6B6B]"
-          >
-            Choose a PDF
-          </label>
-          <span className="text-sm text-[#52606D]"> or drop it here</span>
-          <p className="mt-1 text-xs text-[#7B8794]">Up to 5 MB</p>
-
-          {file && (
-            <div className="mt-3 flex items-center justify-between gap-2 rounded bg-[#EDF0F3] px-2 py-1 text-left text-sm">
-              <span className="truncate" title={file.name}>
-                {file.name}
-              </span>
-              <span className="shrink-0 text-xs text-[#52606D]">
-                {formatSize(file.size)}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={upload}
-          disabled={!file || uploading}
-          className={`mt-3 w-full rounded-md bg-[#0F6B6B] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0B5555] disabled:cursor-not-allowed disabled:bg-[#9AA7B4] ${focusRing}`}
-        >
-          {uploading ? "Reading and indexing PDF…" : "Upload PDF"}
-        </button>
-
-        {uploadError && (
-          <p
-            role="alert"
-            className="mt-3 rounded bg-[#FDE8E8] px-3 py-2 text-sm text-[#9B1C1C]"
-          >
-            {uploadError}
-          </p>
+        {DEMO && (
+          <div className="mt-6 rounded-md border border-[#CBD3DB] bg-white px-3 py-3">
+            <p className="truncate text-sm font-medium">{DEMO_DOC.filename}</p>
+            <p className="text-xs text-[#52606D]">
+              {DEMO_DOC.pages} pages, {DEMO_DOC.chunks} passages indexed
+            </p>
+            <p className="mt-2 text-xs text-[#7B8794]">
+              Uploads are turned off in this public demo. Answers come from this
+              document and cite the page they used.
+            </p>
+          </div>
         )}
 
-        {docs.length > 0 && (
+        {!DEMO && (
+          <>
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                pickFile(e.dataTransfer.files?.[0]);
+              }}
+              className={`mt-6 rounded-md border-2 border-dashed p-5 text-center transition-colors ${
+                dragging
+                  ? "border-[#0F6B6B] bg-[#E3F2F2]"
+                  : "border-[#9AA7B4] bg-white"
+              }`}
+            >
+              <input
+                ref={fileRef}
+                type="file"
+                accept="application/pdf,.pdf"
+                className="peer sr-only"
+                id="pdf"
+                onChange={(e) => pickFile(e.target.files?.[0])}
+              />
+              <label
+                htmlFor="pdf"
+                className="cursor-pointer text-sm font-medium text-[#0F6B6B] underline underline-offset-2 peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#0F6B6B]"
+              >
+                Choose a PDF
+              </label>
+              <span className="text-sm text-[#52606D]"> or drop it here</span>
+              <p className="mt-1 text-xs text-[#7B8794]">Up to 5 MB</p>
+
+              {file && (
+                <div className="mt-3 flex items-center justify-between gap-2 rounded bg-[#EDF0F3] px-2 py-1 text-left text-sm">
+                  <span className="truncate" title={file.name}>
+                    {file.name}
+                  </span>
+                  <span className="shrink-0 text-xs text-[#52606D]">
+                    {formatSize(file.size)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={upload}
+              disabled={!file || uploading}
+              className={`mt-3 w-full rounded-md bg-[#0F6B6B] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#0B5555] disabled:cursor-not-allowed disabled:bg-[#9AA7B4] ${focusRing}`}
+            >
+              {uploading ? "Reading and indexing PDF…" : "Upload PDF"}
+            </button>
+
+            {uploadError && (
+              <p
+                role="alert"
+                className="mt-3 rounded bg-[#FDE8E8] px-3 py-2 text-sm text-[#9B1C1C]"
+              >
+                {uploadError}
+              </p>
+            )}
+          </>
+        )}
+
+        {!DEMO && docs.length > 0 && (
           <div className="mt-8">
             <h2 className="text-sm font-semibold">Ask about</h2>
             <ul className="mt-2 space-y-2">
@@ -353,7 +390,7 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
                 </p>
                 {docs.length > 0 && (
                   <div className="mt-5 flex flex-wrap justify-center gap-2">
-                    {SUGGESTIONS.map((s) => (
+                    {suggestions.map((s) => (
                       <button
                         key={s}
                         onClick={() => ask(s)}
@@ -382,7 +419,7 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
                     ...new Set(
                       m.sources
                         .map((s) => s.page)
-                        .filter((p): p is number => !!p),
+                        .filter((p): p is number => !!p)
                     ),
                   ].sort((a, b) => a - b)
                 : [];
@@ -481,9 +518,10 @@ const [activeId, setActiveId] = useState<string | null>(DEMO ? "demo" : null);
                 }
               }}
               rows={1}
+              maxLength={500}
               placeholder={
                 docs.length
-                  ? "Ask a question about your PDF"
+                  ? "Ask a question about the document"
                   : "Upload a PDF first"
               }
               disabled={docs.length === 0}
