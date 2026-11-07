@@ -148,13 +148,17 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { LoadPdf } from "@/lib/pdf";
-import { SplitDocument } from "@/lib/splitter";
+import { SplitPages} from "@/lib/splitter";
 import { getVectorStore } from "@/lib/vector-store";
 
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   let step = "start";
+  const key = req.headers.get("x-demo-key");
+if (!process.env.DEMO_KEY || key !== process.env.DEMO_KEY) {
+  return NextResponse.json({ error: "Uploads are disabled in the public demo" }, { status: 403 });
+}
   try {
     const formData = await req.formData();
     const file = formData.get("file");
@@ -178,10 +182,10 @@ export async function POST(req: Request) {
     }
 
     step = "split";
-    const documents = await SplitDocument(result.text, {
+    const documents = await SplitPages(result.pages, {
       documentId,
       source: file.name,
-      pages: result.page,
+   
     });
 
     step = "vector-store";

@@ -33,6 +33,8 @@ export const LoadPdf = async (file: File) => {
     return {
       text: result.text,
       page: result.total,
+//t page by page and store the page number on each chunk.
+      pages:result.pages.map((p)=>({num:p.num,text:p.text}))
     };
   } finally {
     await parser.destroy();
