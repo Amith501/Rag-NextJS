@@ -214,6 +214,7 @@ export default function Home() {
         <h1 className="font-serif text-2xl font-semibold tracking-tight">
           PDF Q&amp;A
         </h1>
+        <p className="text-xs text-red-600">DEMO = {String(DEMO)}</p>
         <p className="mt-1 text-sm text-[#52606D]">
           {DEMO
             ? "Ask questions about a sample paper on LangChain."
